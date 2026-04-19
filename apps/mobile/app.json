@@ -19,7 +19,8 @@
     },
     "web": {
       "bundler": "metro",
-      "output": "static"
+      "output": "static",
+      "name": "Local Music"
     },
     "plugins": [
       "expo-router",
