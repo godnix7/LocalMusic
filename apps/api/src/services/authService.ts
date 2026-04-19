@@ -19,13 +19,15 @@ export class AuthService {
     return jwt.sign({ userId, role }, JWT_SECRET, { expiresIn: '7d' });
   }
 
-  static async createUser(data: { email: string; passwordHash: string; username: string }) {
+  static async createUser(data: { name: string; email: string; passwordHash: string; username: string }) {
     return prisma.user.create({
       data: {
         ...data,
         profile: {
           create: {
             handle: data.username,
+            displayName: data.name,
+            avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${data.username}`,
             settings: {
               audioQuality: 'NORMAL',
               theme: 'SYSTEM',
@@ -41,9 +43,14 @@ export class AuthService {
     });
   }
 
-  static async validateUser(email: string) {
-    return prisma.user.findUnique({
-      where: { email },
+  static async validateUser(identifier: string) {
+    return prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: identifier },
+          { username: identifier }
+        ]
+      },
       include: { profile: true, artistProfile: true },
     });
   }

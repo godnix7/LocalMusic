@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { SearchService } from '../../services/searchService';
@@ -10,6 +11,42 @@ async function main() {
   // 1. Create a few users
   const passwordHash = await bcrypt.hash('password123', 10);
   
+  // Create Admins
+  const admin1 = await prisma.user.upsert({
+    where: { email: 'nischay@localmusic.com' },
+    update: {},
+    create: {
+      email: 'nischay@localmusic.com',
+      username: 'nischay',
+      passwordHash,
+      role: 'ADMIN',
+      profile: {
+        create: {
+          handle: 'nischay',
+          displayName: 'Nischay (Admin)',
+        }
+      }
+    }
+  });
+
+  const admin2 = await prisma.user.upsert({
+    where: { email: 'sumit@localmusic.com' },
+    update: {},
+    create: {
+      email: 'sumit@localmusic.com',
+      username: 'sumit',
+      passwordHash,
+      role: 'ADMIN',
+      profile: {
+        create: {
+          handle: 'sumit',
+          displayName: 'Sumit (Admin)',
+        }
+      }
+    }
+  });
+
+  // Create standard test Artists
   const user1 = await prisma.user.upsert({
     where: { email: 'artist1@localmusic.com' },
     update: {},
@@ -96,7 +133,7 @@ async function main() {
           {
             title: 'Electric Horizon',
             duration: 245,
-            audioUrl: '/media/electric-horizon.mp3',
+            audioUrl: '/api/media/electric-horizon.mp3',
             isExplicit: false,
             bpm: 110,
             key: 'C# Minor',
@@ -105,7 +142,7 @@ async function main() {
           {
             title: 'Grid Runner',
             duration: 198,
-            audioUrl: '/media/grid-runner.mp3',
+            audioUrl: '/api/media/grid-runner.mp3',
             isExplicit: false,
             bpm: 124,
             key: 'A Minor',
@@ -113,7 +150,8 @@ async function main() {
           }
         ]
       }
-    }
+    },
+    include: { tracks: true }
   });
 
   // Index Tracks

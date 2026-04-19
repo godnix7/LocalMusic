@@ -35,16 +35,11 @@ interface PlayerState {
   toggleMute: () => void
 }
 
-export const DEMO_TRACKS: Track[] = [
-  { id: '1', title: 'Midnight City',     artist: 'M83',         album: 'Hurry Up, We\'re Dreaming', duration: 244, cover: 'https://picsum.photos/seed/t1/300/300', explicit: false, hifi: true  },
-  { id: '2', title: 'Blinding Lights',   artist: 'The Weeknd',  album: 'After Hours',               duration: 200, cover: 'https://picsum.photos/seed/t2/300/300', explicit: false, hifi: true  },
-  { id: '3', title: 'Save Your Tears',   artist: 'The Weeknd',  album: 'After Hours',               duration: 215, cover: 'https://picsum.photos/seed/t3/300/300', explicit: false, hifi: false },
-  { id: '4', title: 'Levitating',        artist: 'Dua Lipa',    album: 'Future Nostalgia',          duration: 203, cover: 'https://picsum.photos/seed/t4/300/300', explicit: false, hifi: true  },
-  { id: '5', title: 'Stay',              artist: 'The Kid LAROI', album: 'F*ck Love 3',             duration: 141, cover: 'https://picsum.photos/seed/t5/300/300', explicit: true,  hifi: false },
-  { id: '6', title: 'Heat Waves',        artist: 'Glass Animals', album: 'Dreamland',               duration: 238, cover: 'https://picsum.photos/seed/t6/300/300', explicit: false, hifi: true  },
-  { id: '7', title: 'As It Was',         artist: 'Harry Styles', album: "Harry's House",            duration: 167, cover: 'https://picsum.photos/seed/t7/300/300', explicit: false, hifi: true  },
-  { id: '8', title: 'Anti-Hero',         artist: 'Taylor Swift', album: 'Midnights',                duration: 200, cover: 'https://picsum.photos/seed/t8/300/300', explicit: false, hifi: true  },
-]
+export const DEMO_TRACKS: Track[] = []
+
+const audioEl = new Audio()
+audioEl.crossOrigin = 'anonymous'
+
 
 export const usePlayerStore = create<PlayerState>((set, get) => ({
   track: null,
@@ -56,13 +51,29 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   repeat: 'off',
   isMuted: false,
 
-  play: (track, queue) => set({ track, queue: queue ?? get().queue, isPlaying: true, progress: 0 }),
-  pause:  () => set({ isPlaying: false }),
-  resume: () => set({ isPlaying: true }),
+  play: (track, queue) => {
+    if (track.audioUrl) {
+      audioEl.src = track.audioUrl
+      audioEl.play().catch(console.error)
+    }
+    set({ track, queue: queue ?? get().queue, isPlaying: true, progress: 0 })
+  },
+  pause:  () => {
+    audioEl.pause()
+    set({ isPlaying: false })
+  },
+  resume: () => {
+    audioEl.play().catch(console.error)
+    set({ isPlaying: true })
+  },
   togglePlay: () => {
     const { isPlaying, track, queue } = get()
-    if (!track && queue.length > 0) set({ track: queue[0], isPlaying: true })
-    else set({ isPlaying: !isPlaying })
+    if (!track && queue.length > 0) {
+      get().play(queue[0], queue)
+    } else {
+      if (isPlaying) get().pause()
+      else get().resume()
+    }
   },
 
   next: () => {
@@ -80,11 +91,19 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (!track || queue.length === 0) return
     const idx = queue.findIndex(t => t.id === track.id)
     const prev = queue[(idx - 1 + queue.length) % queue.length]
-    set({ track: prev, progress: 0, isPlaying: true })
+    get().play(prev, queue)
   },
 
-  seek:         (progress) => set({ progress }),
-  setVolume:    (volume)   => set({ volume, isMuted: volume === 0 }),
+  seek: (progress) => {
+    if (audioEl.duration) {
+      audioEl.currentTime = progress * audioEl.duration
+    }
+    set({ progress })
+  },
+  setVolume: (volume) => {
+    audioEl.volume = volume
+    set({ volume, isMuted: volume === 0 })
+  },
   toggleShuffle: ()        => set(s => ({ shuffle: !s.shuffle })),
   toggleRepeat: ()         => set(s => ({ repeat: s.repeat === 'off' ? 'all' : s.repeat === 'all' ? 'one' : 'off' })),
   toggleMute:   ()         => set(s => ({ isMuted: !s.isMuted })),
@@ -95,3 +114,13 @@ export function formatTime(seconds: number): string {
   const s = Math.floor(seconds % 60)
   return `${m}:${s.toString().padStart(2, '0')}`
 }
+
+audioEl.addEventListener('timeupdate', () => {
+  if (audioEl.duration) {
+    usePlayerStore.setState({ progress: audioEl.currentTime / audioEl.duration })
+  }
+})
+
+audioEl.addEventListener('ended', () => {
+  usePlayerStore.getState().next()
+})

@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { DEMO_TRACKS } from '../store/playerStore'
+import { useState, useEffect } from 'react'
+import { musicApi } from '../lib/api'
 import { usePlayerStore } from '../store/playerStore'
 
 const GENRES = [
@@ -19,13 +19,19 @@ const GENRES = [
 
 export default function Search() {
   const [query, setQuery] = useState('')
+  const [results, setResults] = useState<any[]>([])
   const { play } = usePlayerStore()
 
-  const results = query.length > 1
-    ? DEMO_TRACKS.filter(t =>
-        t.title.toLowerCase().includes(query.toLowerCase()) ||
-        t.artist.toLowerCase().includes(query.toLowerCase()))
-    : []
+  useEffect(() => {
+    if (query.length > 1) {
+      const timer = setTimeout(() => {
+        musicApi.search(query).then(res => setResults(res.results)).catch(console.error)
+      }, 300)
+      return () => clearTimeout(timer)
+    } else {
+      setResults([])
+    }
+  }, [query])
 
   return (
     <div className="fade-in" style={{ paddingBottom: 40 }}>
@@ -46,13 +52,13 @@ export default function Search() {
           {results.map((t, i) => (
             <div key={t.id} className={`track-row`} onClick={() => play(t, results)}>
               <span className="track-num">{i+1}</span>
-              <img src={t.cover} alt={t.title} className="track-thumb" />
+              <img src={t.album?.cover || t.cover || 'https://picsum.photos/200'} alt={t.title} className="track-thumb" />
               <div className="track-info">
                 <div className="track-title">{t.title}</div>
-                <div className="track-artist">{t.artist}</div>
+                <div className="track-artist">{t.artistName || t.artist?.name || t.artist}</div>
               </div>
-              <span className="text-secondary" style={{ fontSize: '0.8rem' }}>{t.album}</span>
-              <span className="track-duration">{`${Math.floor(t.duration/60)}:${(t.duration%60).toString().padStart(2,'0')}`}</span>
+              <span className="text-secondary" style={{ fontSize: '0.8rem' }}>{t.albumTitle || t.album?.title || t.album}</span>
+              <span className="track-duration">{t.duration ? `${Math.floor(t.duration/60)}:${(t.duration%60).toString().padStart(2,'0')}` : '--'}</span>
             </div>
           ))}
         </section>
