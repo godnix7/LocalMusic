@@ -10,6 +10,7 @@
     "web": "expo start --web"
   },
   "dependencies": {
+    "@expo/metro-runtime": "^55.0.9",
     "@gorhom/bottom-sheet": "^5.1.1",
     "@local-music/shared": "*",
     "@shopify/flash-list": "^1.7.3",

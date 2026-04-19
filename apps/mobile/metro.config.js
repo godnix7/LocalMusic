@@ -1,45 +1,39 @@
 /**
  * Metro config for monorepo (Expo 52 / Expo Router v4)
  * https://docs.expo.dev/guides/monorepos/
- *
- * Root cause of TransformError:
- *   expo-router/_ctx.android.js uses require.context(process.env.EXPO_ROUTER_APP_ROOT).
- *   babel-preset-expo inlines that env var at build time — but ONLY if expo-router
- *   is resolved from THIS project's node_modules (so babel can transform it).
- *   When Metro resolves it from the root monorepo node_modules the transform never runs.
- *
- * Fix: pin expo-router + key packages to this project's node_modules.
  */
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
 
-const projectRoot = __dirname;                             // apps/mobile
+const projectRoot = __dirname;                           // apps/mobile
 const monorepoRoot = path.resolve(projectRoot, '../..'); // local-music/
 
 const config = getDefaultConfig(projectRoot);
 
-// ── 1. Watch the whole monorepo so shared packages update live ─────────────
+// 1. Watch the whole monorepo so shared packages update live
 config.watchFolders = [monorepoRoot];
 
-// ── 2. Resolve: prefer local node_modules over root node_modules ───────────
+// 2. Resolve order: project node_modules FIRST, then root node_modules.
+//    IMPORTANT: Do NOT use disableHierarchicalLookup — it breaks @expo/metro-runtime resolution.
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot,  'node_modules'),
   path.resolve(monorepoRoot, 'node_modules'),
 ];
 
-// ── 3. Pin critical packages that MUST be transformed from this project ─────
-//    This prevents Metro picking them from root node_modules where babel
-//    preset-expo hasn't touched them yet.
+// 3. Pin packages that MUST resolve from THIS project's node_modules.
+//    expo-router/_ctx.*.js needs babel-preset-expo to inline EXPO_ROUTER_APP_ROOT
+//    at build time. That only happens when expo-router is in the project's own
+//    node_modules (where Metro applies our babel config).
 config.resolver.extraNodeModules = {
-  'expo-router':             path.resolve(projectRoot, 'node_modules/expo-router'),
-  'react':                   path.resolve(projectRoot, 'node_modules/react'),
-  'react-native':            path.resolve(projectRoot, 'node_modules/react-native'),
-  'expo':                    path.resolve(projectRoot, 'node_modules/expo'),
-  'react-native-reanimated': path.resolve(projectRoot, 'node_modules/react-native-reanimated'),
+  // Core — must be single instances
+  'react':                    path.resolve(projectRoot, 'node_modules/react'),
+  'react-native':             path.resolve(projectRoot, 'node_modules/react-native'),
+  // Expo packages that need babel-preset-expo transform
+  'expo':                     path.resolve(projectRoot, 'node_modules/expo'),
+  'expo-router':              path.resolve(projectRoot, 'node_modules/expo-router'),
+  '@expo/metro-runtime':      path.resolve(projectRoot, 'node_modules/@expo/metro-runtime'),
+  // Reanimated must be a single instance across the bundle
+  'react-native-reanimated':  path.resolve(projectRoot, 'node_modules/react-native-reanimated'),
 };
-
-// ── 4. Don't walk up past the project root for node_modules ───────────────
-//    Without this Metro falls back to root node_modules too eagerly.
-config.resolver.disableHierarchicalLookup = true;
 
 module.exports = config;
