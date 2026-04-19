@@ -14,6 +14,7 @@
     "@local-music/shared": "*",
     "@shopify/flash-list": "^1.7.3",
     "expo": "~52.0.0",
+    "expo-asset": "~11.0.5",
     "expo-av": "~15.0.0",
     "expo-blur": "~14.0.0",
     "expo-font": "~13.0.0",
