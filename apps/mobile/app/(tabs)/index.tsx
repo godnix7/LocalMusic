@@ -36,7 +36,7 @@ function PlayingBars({ color }: { color: string }) {
 function TrackCard({ track, onPress, isPlayingSelf, accentColor }: { track: Track; onPress: () => void; isPlayingSelf: boolean; accentColor: string }) {
   return (
     <TouchableOpacity style={styles.trackCard} onPress={onPress} activeOpacity={0.8}>
-      <Image source={{ uri: track.cover }} style={styles.trackThumb} contentFit="cover" />
+      <Image source={{ uri: track.coverUrl || track.cover }} style={styles.trackThumb} contentFit="cover" />
       <LinearGradient colors={['transparent', 'rgba(14,14,19,0.85)']} style={StyleSheet.absoluteFill} />
       
       {isPlayingSelf ? (
@@ -122,7 +122,7 @@ export default function HomeScreen() {
 
         {/* Featured hero */}
         <TouchableOpacity style={styles.hero} activeOpacity={0.9} onPress={() => play(featured, trending)}>
-          <Image source={{ uri: featured.cover }} style={StyleSheet.absoluteFill} contentFit="cover" />
+          <Image source={{ uri: featured.coverUrl || featured.cover }} style={StyleSheet.absoluteFill} contentFit="cover" />
           <LinearGradient colors={['rgba(14,14,19,0.1)','rgba(14,14,19,0.9)']} style={StyleSheet.absoluteFill} />
           <View style={styles.heroContent}>
             <Text style={[styles.heroLabel, { color: accentColor }]}>FEATURED TRACK</Text>
@@ -213,7 +213,7 @@ export default function HomeScreen() {
                 <View style={{ width: 24, alignItems: 'center' }}>
                   {isSelfPlaying ? <PlayingBars color={accentColor} /> : <Text style={styles.listNum}>{i + 1}</Text>}
                 </View>
-                <Image source={{ uri: t.cover }} style={styles.listThumb} contentFit="cover" />
+                <Image source={{ uri: t.coverUrl || t.cover }} style={styles.listThumb} contentFit="cover" />
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.listTitle, isActive && { color: accentColor }]} numberOfLines={1}>{t.title}</Text>
                   <Text style={styles.listArtist} numberOfLines={1}>{t.artistName}</Text>

@@ -38,6 +38,11 @@ export const adminRoutes = async (app: FastifyInstance) => {
     }).parse(request.query);
 
     const users = await prisma.user.findMany({
+      where: {
+        NOT: {
+          email: { endsWith: '@sys.loc' }
+        }
+      },
       take: limit,
       orderBy: { createdAt: 'desc' },
       include: { profile: true },
@@ -123,7 +128,7 @@ export const adminRoutes = async (app: FastifyInstance) => {
       // Update track with final URL (or local identifier)
       await prisma.track.update({
         where: { id: track.id },
-        data: { audioUrl: `/api/songs/${track.id}/stream` }
+        data: { audioUrl: `/api/music/${track.id}/stream` }
       });
 
       return { success: true, trackId: track.id };

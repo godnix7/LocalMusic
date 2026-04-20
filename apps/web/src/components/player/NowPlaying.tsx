@@ -1,9 +1,80 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { usePlayerStore, formatTime } from '../../store/playerStore'
+import { usePlayerStore, formatTime, getArtistName, getCoverUrl } from '../../store/playerStore'
 import { useSyncStore } from '../../store/syncStore'
 import DeviceSync from '../ui/DeviceSync'
 import './NowPlaying.css'
+
+/**
+ * Robust HTMLAudioElement manager
+ */
+function AudioEngine() {
+  const { track, isPlaying, volume, isMuted, progress, setProgress, next } = usePlayerStore()
+  const audioRef = useRef<HTMLAudioElement>(null)
+
+  // Handle Event Subscriptions
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio) return
+
+    const onTimeUpdate = () => {
+      const dur = audio.duration || 0
+      const curr = audio.currentTime || 0
+      const p = dur > 0 ? curr / dur : 0
+      if (!isNaN(p)) setProgress(p)
+    }
+
+    const onEnded = () => next()
+
+    audio.addEventListener('timeupdate', onTimeUpdate)
+    audio.addEventListener('ended', onEnded)
+    return () => {
+      audio.removeEventListener('timeupdate', onTimeUpdate)
+      audio.removeEventListener('ended', onEnded)
+    }
+  }, [setProgress, next])
+
+  // Handle Play/Pause
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio) return
+
+    if (isPlaying && track?.audioUrl) {
+      audio.play().catch(err => {
+        console.warn('[AudioEngine] Playback prevented:', err.message)
+      })
+    } else {
+      audio.pause()
+    }
+  }, [isPlaying, track?.id, track?.audioUrl])
+
+  // Handle Internal Sync (Seek)
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio || !audio.duration || isNaN(audio.duration)) return
+    
+    const targetTime = (progress || 0) * audio.duration
+    if (Math.abs(audio.currentTime - targetTime) > 2) {
+      audio.currentTime = targetTime
+    }
+  }, [progress])
+
+  // Handle Volume
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = isMuted ? 0 : (volume || 0.8)
+    }
+  }, [volume, isMuted])
+
+  return (
+    <audio 
+      ref={audioRef} 
+      src={track?.audioUrl || ''} 
+      crossOrigin="anonymous" 
+      style={{ display: 'none' }} 
+    />
+  )
+}
 
 export default function NowPlayingBar() {
   const {
@@ -14,26 +85,26 @@ export default function NowPlayingBar() {
   const navigate = useNavigate()
   const [showDeviceSync, setShowDeviceSync] = useState(false)
 
-  // Total = this device + others seen via BroadcastChannel
-  const deviceCount = 1 + connectedDevices.length
+  const deviceCount = 1 + (connectedDevices?.length || 0)
 
   if (!track) return <div className="now-playing-bar glass-heavy" />
 
-  const elapsed   = Math.floor(progress * track.duration)
-  const volumeVal = isMuted ? 0 : volume
+  const elapsed   = Math.floor((progress || 0) * (track.duration || 0))
+  const volumeVal = isMuted ? 0 : (volume || 0.8)
 
   return (
     <>
+      <AudioEngine />
+
       <div className="now-playing-bar glass-heavy">
         {/* Left: Track info */}
         <div className="now-playing-left" onClick={() => navigate('/now-playing')}>
-          <img src={track.cover} alt={track.title} className="now-playing-cover" />
+          <img src={getCoverUrl(track)} alt={track.title} className="now-playing-cover" />
           <div className="now-playing-info">
             <span className="now-playing-title truncate">{track.title}</span>
-            <span className="now-playing-artist truncate">{track.artist}</span>
+            <span className="now-playing-artist truncate">{getArtistName(track)}</span>
           </div>
           <button className="btn-icon now-playing-heart" onClick={e => e.stopPropagation()}>♡</button>
-          {track.hifi && <span className="badge badge-hifi">HiFi</span>}
         </div>
 
         {/* Center: Controls + Seek */}
@@ -58,15 +129,18 @@ export default function NowPlayingBar() {
 
           <div className="now-playing-seek">
             <span className="now-playing-time">{formatTime(elapsed)}</span>
-            <div
-              className="seek-bar"
-              onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect()
-                seek((e.clientX - rect.left) / rect.width)
-              }}
-            >
-              <div className="seek-progress" style={{ width: `${progress * 100}%` }}>
-                <div className="seek-thumb" />
+            <div className="seek-bar-container">
+              <input
+                type="range"
+                className="seek-bar-input"
+                min="0"
+                max="1"
+                step="0.001"
+                value={progress || 0}
+                onChange={(e) => seek(parseFloat(e.target.value))}
+              />
+              <div className="seek-bar-track">
+                <div className="seek-bar-fill" style={{ width: `${(progress || 0) * 100}%` }} />
               </div>
             </div>
             <span className="now-playing-time">{formatTime(track.duration)}</span>
@@ -75,39 +149,39 @@ export default function NowPlayingBar() {
 
         {/* Right: Volume + Devices + Full screen */}
         <div className="now-playing-right">
-          <button className="btn-icon" onClick={toggleMute} title="Volume">
-            {volumeVal === 0 ? '🔇' : volumeVal < 0.5 ? '🔉' : '🔊'}
-          </button>
-          <div
-            className="seek-bar volume-bar"
-            style={{ width: 90 }}
-            onClick={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect()
-              setVolume((e.clientX - rect.left) / rect.width)
-            }}
-          >
-            <div className="seek-progress" style={{ width: `${volumeVal * 100}%` }}>
-              <div className="seek-thumb" />
+          <div className="volume-control">
+            <button className="btn-icon" onClick={toggleMute} title="Volume">
+              {volumeVal === 0 ? '🔇' : volumeVal < 0.5 ? '🔉' : '🔊'}
+            </button>
+            <div className="volume-bar-container">
+              <input
+                type="range"
+                className="seek-bar-input volume-input"
+                min="0"
+                max="1"
+                step="0.01"
+                value={volumeVal}
+                onChange={(e) => setVolume(parseFloat(e.target.value))}
+              />
+              <div className="seek-bar-track">
+                <div className="seek-bar-fill" style={{ width: `${volumeVal * 100}%` }} />
+              </div>
             </div>
           </div>
 
-          {/* Device Sync Button */}
           <button
             className={`btn-icon device-sync-btn${deviceCount > 1 ? ' has-devices' : ''}`}
             onClick={() => setShowDeviceSync(true)}
-            title={`${deviceCount} device${deviceCount !== 1 ? 's' : ''} connected`}
+            title={`${deviceCount} devices connected`}
           >
             <span>📱</span>
-            {deviceCount > 1 && (
-              <span className="device-count-badge">{deviceCount}</span>
-            )}
+            {deviceCount > 1 && <span className="device-count-badge">{deviceCount}</span>}
           </button>
 
           <button className="btn-icon" onClick={() => navigate('/now-playing')} title="Full screen">⛶</button>
         </div>
       </div>
 
-      {/* Device Sync Panel */}
       {showDeviceSync && <DeviceSync onClose={() => setShowDeviceSync(false)} />}
     </>
   )

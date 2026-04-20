@@ -154,30 +154,50 @@ export class DownloaderService {
               artist = await prisma.artistProfile.create({ data: { userId: mockUser.id, name: tData.artist } });
             }
 
-            // Insert Track and Storage Mapping
-            const track = await prisma.track.create({
-              data: {
+            // Upsert Track to prevent duplicates by spotifyId
+            const track = await prisma.track.upsert({
+              where: { spotifyId: tData.spotifyId },
+              update: {
+                audioUrl: `/api/music/PLACEHOLDER/stream`, // Will update below
+                coverUrl: `/api/music/PLACEHOLDER/cover`
+              },
+              create: {
                 title: tData.title,
                 artistId: artist.id,
+                spotifyId: tData.spotifyId,
                 duration: Math.round(tData.duration / 1000) || 180,
-                playCount: 0,
-                audioUrl: ''
+                audioUrl: '',
+                coverUrl: ''
               }
             });
 
-            await prisma.songStorage.create({
-              data: { trackId: track.id, filePath: tData.path, storageType: 'LOCAL' }
-            });
+            // Check if file exists on disk
+            let alreadyHasFile = false;
+            if (tData.path && fs.existsSync(tData.path) && fs.statSync(tData.path).size > 0) {
+              alreadyHasFile = true;
+            }
+
+            if (!alreadyHasFile) {
+                await prisma.songStorage.upsert({
+                  where: { trackId: track.id },
+                  update: { filePath: tData.path },
+                  create: { trackId: track.id, filePath: tData.path, storageType: 'LOCAL' }
+                });
+            }
 
             await prisma.track.update({
               where: { id: track.id },
-              data: { audioUrl: `/api/songs/${track.id}/stream` }
+              data: { 
+                audioUrl: `/api/music/${track.id}/stream`,
+                coverUrl: `/api/music/${track.id}/cover`
+              }
             });
             console.log(`[Spotify] Indexed Track -> ${tData.title}`);
-          } catch (err) {
-            console.error(`[DB Error] Failed to parse/insert DB_INDEX: ${err}`);
           }
+        } catch (err) {
+          console.error(`[DB Error] Failed to parse/insert DB_INDEX: ${err}`);
         }
+      }
 
       // Extract [X/Y] progress
       const progressMatch = line.match(/\[(\d+)\/(\d+)\]/);

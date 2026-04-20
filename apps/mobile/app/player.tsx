@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions, PanResponder, ScrollView } from 'react-native'
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions, PanResponder, ScrollView, LayoutChangeEvent } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Image } from 'expo-image'
 import { LinearGradient } from 'expo-linear-gradient'
@@ -7,6 +7,7 @@ import { usePlayerStore, formatTime } from '@/store/playerStore'
 import { useLibraryStore } from '@/store/libraryStore'
 import { useThemeStore } from '@/store/themeStore'
 import { colors, gradients, spacing, radii, typography } from '@/theme/tokens'
+import { useRef } from 'react'
 
 const { width } = Dimensions.get('window')
 
@@ -24,19 +25,23 @@ export default function PlayerScreen() {
   const volumeVal = isMuted ? 0 : volume
   const upNext = queue.filter(t => t.id !== track.id).slice(0, 5)
 
-  const seekBarWidth = width - spacing[6] * 2
+  const seekBarWidthRef = useRef(width - spacing[6] * 2)
 
   const seekPanResponder = PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onPanResponderGrant: (e) => {
       const x = e.nativeEvent.locationX
-      seek(Math.max(0, Math.min(1, x / seekBarWidth)))
+      seek(Math.max(0, Math.min(1, x / seekBarWidthRef.current)))
     },
     onPanResponderMove: (e) => {
       const x = e.nativeEvent.locationX
-      seek(Math.max(0, Math.min(1, x / seekBarWidth)))
+      seek(Math.max(0, Math.min(1, x / seekBarWidthRef.current)))
     },
   })
+
+  const onSeekBarLayout = (event: LayoutChangeEvent) => {
+    seekBarWidthRef.current = event.nativeEvent.layout.width || seekBarWidthRef.current
+  }
 
   const volumeBarWidth = width - (spacing[6] * 2 + 40 + 24) // total width - (padding + icons + gap)
 
@@ -55,7 +60,7 @@ export default function PlayerScreen() {
   return (
     <View style={styles.container}>
       {/* Blurred background */}
-      <Image source={{ uri: track.cover }} style={StyleSheet.absoluteFill} contentFit="cover" blurRadius={60} />
+      <Image source={{ uri: track.coverUrl || track.cover }} style={StyleSheet.absoluteFill} contentFit="cover" blurRadius={60} />
       <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(14,14,19,0.8)' }]} />
 
       <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
@@ -97,7 +102,8 @@ export default function PlayerScreen() {
           <View style={styles.playerControlsSection}>
             {/* Seek bar */}
             <View style={styles.seekWrap}>
-              <View style={styles.seekBar} hitSlop={8} {...seekPanResponder.panHandlers}>
+              <Text style={styles.timelineLabel}>Timeline</Text>
+              <View style={styles.seekBar} hitSlop={8} onLayout={onSeekBarLayout} {...seekPanResponder.panHandlers}>
                 <View style={styles.seekTrack}>
                   <View style={[styles.seekFill, { width: `${progress * 100}%`, backgroundColor: accentColor }]} />
                   <View style={[styles.seekThumb, { left: `${progress * 100}%`, shadowColor: accentColor }]} />
@@ -159,7 +165,7 @@ export default function PlayerScreen() {
                   <Image source={{ uri: qt.cover }} style={styles.queueCover} contentFit="cover" />
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={styles.queueTitle} numberOfLines={1}>{qt.title}</Text>
-                    <Text style={styles.queueArtist} numberOfLines={1}>{qt.artistName}</Text>
+                    <Text style={styles.queueArtist} numberOfLines={1}>{qt.artistName || 'Unknown Artist'}</Text>
                   </View>
                 </TouchableOpacity>
               ))
@@ -219,6 +225,7 @@ const styles = StyleSheet.create({
   playerControlsSection: { paddingHorizontal: spacing[8], marginBottom: spacing[8] },
   
   seekWrap: { marginBottom: spacing[6] },
+  timelineLabel: { fontSize: 12, color: 'rgba(255,255,255,0.6)', fontWeight: '700', marginBottom: spacing[2], textTransform: 'uppercase', letterSpacing: 0.6 },
   seekBar:  { height: 20, justifyContent: 'center' },
   seekTrack:{ height: 4, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: radii.full, position: 'relative' },
   seekFill: { height: 4, borderRadius: radii.full, position: 'absolute' },

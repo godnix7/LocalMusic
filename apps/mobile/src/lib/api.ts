@@ -9,7 +9,7 @@
 import { User } from '@local-music/shared/src/types/user'
 import { Track, Album as AlbumType } from '@local-music/shared/src/types/track'
 
-const BASE_URL = __DEV__
+export const BASE_URL = __DEV__
   ? 'http://10.0.2.2:3001/api'   // Android emulator → host machine
   : 'https://api.localmusic.app' // production (placeholder)
 
@@ -54,14 +54,15 @@ export const musicApi = {
   trending: () =>
     request<{ tracks: Track[] }>('GET', '/music/trending'),
 
-  stream: (id: string) =>
-    request<{ url: string }>('GET', `/music/stream/${id}`),
+  streamUrl: (id: string) => `${BASE_URL}/music/${id}/stream`,
+  
+  coverUrl: (id: string) => `${BASE_URL}/music/${id}/cover`,
 
   search: (q: string) =>
-    request<{ results: Track[] }>('GET', `/music/search?q=${encodeURIComponent(q)}`),
+    request<{ results: Track[] }>('GET', `/search/tracks?q=${encodeURIComponent(q)}`),
 
   getTrack: (id: string) =>
-    request<Track>('GET', `/tracks/${id}`),
+    request<{ track: Track }>('GET', `/music/${id}`),
 
   getAlbum: (id: string) =>
     request<{ album: any, tracks: Track[] }>('GET', `/albums/${id}`),
@@ -92,6 +93,21 @@ export const userApi = {
 
   updateProfile: (updates: { displayName?: string; avatarUrl?: string }) =>
     request<{ user: User }>('PUT', '/users/me', updates),
+}
+
+// ── Admin ─────────────────────────────────────────────────────────────────
+export const adminApi = {
+  getStats: () =>
+    request<{ stats: any }>('GET', '/admin/stats'),
+
+  getTasks: () =>
+    request<{ tasks: any[] }>('GET', '/admin/tasks'),
+
+  addPlaylist: (url: string) =>
+    request<{ success: boolean }>('POST', '/admin/add-playlist', { url }),
+
+  stopTask: (id: string) =>
+    request<{ success: boolean }>('POST', `/admin/stop-task`, { id }),
 }
 
 // ── Health ────────────────────────────────────────────────────────────────

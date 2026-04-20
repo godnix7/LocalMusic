@@ -32,9 +32,49 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 }
 
 import Modal from './components/ui/Modal'
+import React from 'react'
+
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  state = { hasError: false, error: null as Error | null }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error }
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('🔴 React Error Boundary caught:', error, info)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ 
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          height: '100vh', background: '#0d0d0f', color: '#fff', fontFamily: 'Inter, sans-serif',
+          gap: 16, padding: 32, textAlign: 'center'
+        }}>
+          <span style={{ fontSize: '3rem' }}>😵</span>
+          <h2>Something went wrong</h2>
+          <p style={{ color: '#888', maxWidth: 400 }}>{this.state.error?.message}</p>
+          <button
+            onClick={() => { this.setState({ hasError: false, error: null }); window.location.href = '/' }}
+            style={{ padding: '10px 24px', borderRadius: 8, border: 'none', background: '#A855F7', color: '#fff', cursor: 'pointer', fontWeight: 600 }}
+          >
+            Reload App
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 export default function App() {
   return (
+    <ErrorBoundary>
     <BrowserRouter>
       <Modal />
       <Routes>
@@ -70,5 +110,6 @@ export default function App() {
         </Route>
       </Routes>
     </BrowserRouter>
+    </ErrorBoundary>
   )
 }

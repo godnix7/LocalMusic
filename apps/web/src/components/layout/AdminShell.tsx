@@ -1,8 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
-import { useModalStore } from '../../store/modalStore'
-import { adminApi } from '../../lib/api'
-import { useState } from 'react'
 import './AdminShell.css'
 
 const ADMIN_NAV = [

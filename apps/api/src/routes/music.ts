@@ -2,7 +2,6 @@ import { FastifyInstance } from 'fastify';
 import { MusicService } from '../services/musicService';
 import { prisma } from '../db/client';
 import { z } from 'zod';
-
 import fs from 'fs';
 import path from 'path';
 
@@ -11,7 +10,6 @@ const idParamSchema = z.object({
 });
 
 export const musicRoutes = async (app: FastifyInstance) => {
-  // Existing routes...
   app.get('/trending', async (request, reply) => {
     const tracks = await MusicService.getTrending();
     return { tracks };
@@ -22,57 +20,71 @@ export const musicRoutes = async (app: FastifyInstance) => {
     return { tracks };
   });
 
-  // Range-based Streaming
+
+  app.get('/:id/cover', async (request, reply) => {
+    const { id } = idParamSchema.parse(request.params);
+    const storage = await prisma.songStorage.findUnique({ where: { trackId: id } });
+    if (!storage || !fs.existsSync(storage.filePath)) return reply.status(404).send({ error: 'Not found' });
+    
+    try {
+      const { parseFile } = await import('music-metadata');
+      const metadata = await parseFile(storage.filePath);
+      const picture = metadata.common.picture?.[0];
+      if (picture) {
+        reply.header('Content-Type', picture.format);
+        return reply.send(picture.data);
+      }
+    } catch {}
+    return reply.status(404).send({ error: 'No cover' });
+  });
+
   app.get('/:id/stream', async (request, reply) => {
     const { id } = idParamSchema.parse(request.params);
-    
-    // 1. Get storage info from PostgreSQL
-    const storage = await prisma.songStorage.findUnique({
-      where: { trackId: id }
-    });
+    console.log(`[Stream Req] ID: ${id}`);
 
-    if (!storage || !fs.existsSync(storage.filePath)) {
-      return reply.status(404).send({ error: 'Track file not found' });
-    }
+    try {
+        const storage = await prisma.songStorage.findUnique({ where: { trackId: id } });
+        if (!storage) return reply.status(404).send({ error: 'DB record missing' });
 
-    const stat = fs.statSync(storage.filePath);
-    const fileSize = stat.size;
-    const range = (request.headers as any).range;
+        let filePath = storage.filePath;
+        if (!fs.existsSync(filePath)) {
+            // Extension probe
+            const exts = ['.mp3', '.flac', '.m4a', '.mp4'];
+            let found = false;
+            for (const ext of exts) {
+                if (fs.existsSync(filePath + ext)) {
+                    filePath += ext;
+                    found = true;
+                    await prisma.songStorage.update({ where: { id: storage.id }, data: { filePath } });
+                    break;
+                }
+            }
+            if (!found) return reply.status(404).send({ error: 'File missing' });
+        }
 
-    if (range) {
-      const parts = range.replace(/bytes=/, "").split("-");
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-      const chunksize = (end - start) + 1;
-      const file = fs.createReadStream(storage.filePath, { start, end });
-      const head = {
-        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-        'Accept-Ranges': 'bytes',
-        'Content-Length': chunksize,
-        'Content-Type': 'audio/flac', // Or detect from extension
-      };
-      reply.raw.writeHead(206, head);
-      file.pipe(reply.raw);
-    } else {
-      const head = {
-        'Content-Length': fileSize,
-        'Content-Type': 'audio/flac',
-      };
-      reply.raw.writeHead(200, head);
-      fs.createReadStream(storage.filePath).pipe(reply.raw);
+        const mediaRoot = path.resolve(__dirname, '../../media');
+        const relativePath = path.relative(mediaRoot, filePath).replace(/\\/g, '/');
+        
+        console.log(`[Stream Debug] mediaRoot: ${mediaRoot}`);
+        console.log(`[Stream Debug] filePath: ${filePath}`);
+        console.log(`[Stream Debug] relativePath: ${relativePath}`);
+        console.log(`[Stream Debug] exists: ${fs.existsSync(filePath)}`);
+
+        if (!fs.existsSync(filePath)) {
+          return reply.status(404).send({ error: 'File path invalid after probe' });
+        }
+
+        console.log(`[Stream OK] Serving: ${relativePath}`);
+        return reply.sendFile(relativePath, mediaRoot);
+    } catch (err) {
+        console.error('[Stream Error]', err);
+        return reply.status(500).send({ error: 'Streaming failed' });
     }
   });
 
   app.get('/:id', async (request, reply) => {
     const { id } = idParamSchema.parse(request.params);
     const track = await MusicService.getTrackById(id);
-    if (!track) return reply.status(404).send({ error: 'Track not found' });
     return { track };
-  });
-
-  app.post('/:id/play', async (request, reply) => {
-    const { id } = idParamSchema.parse(request.params);
-    await MusicService.incrementPlayCount(id);
-    return { success: true };
   });
 };

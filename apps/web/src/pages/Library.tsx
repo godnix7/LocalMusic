@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { usePlayerStore } from '../store/playerStore'
 import { musicApi, playlistApi } from '../lib/api'
+import { useModalStore } from '../store/modalStore'
 
 const FILTERS = ['All', 'Playlists', 'Albums', 'Artists']
 
@@ -24,13 +25,15 @@ export default function Library() {
     })
   }, [])
 
+  const { showPrompt, showAlert } = useModalStore()
   const handleCreate = () => {
-    const name = prompt('Enter playlist name:')
-    if (name) {
-      playlistApi.create(name).then(res => {
-        setPlaylists(prev => [res.playlist, ...prev])
-      }).catch(console.error)
-    }
+    showPrompt('New Playlist', 'Enter a name for your new playlist:', (name) => {
+      if (name) {
+        playlistApi.create(name).then(res => {
+          setPlaylists(prev => [res.playlist, ...prev])
+        }).catch(err => showAlert('Error', err.message))
+      }
+    })
   }
 
   const filteredPlaylists = playlists

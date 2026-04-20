@@ -1,55 +1,66 @@
-import { create } from 'zustand'
+/**
+ * Shared Player Store
+ * -------------------
+ * Manages playback state, queue, and tracks.
+ */
 
-export interface Track {
-  id: string
-  title: string
-  artist: string | { name: string; id?: string }
-  album: string | { title?: string; coverArt?: string; id?: string }
-  duration: number // seconds
-  cover?: string
-  audioUrl?: string
-  explicit?: boolean
-  isExplicit?: boolean
-  hifi?: boolean
-  playCount?: number
-}
+import { create } from 'zustand'
+import { Track } from '../../../../packages/shared/src/types/track'
 
 interface PlayerState {
   track: Track | null
   queue: Track[]
   isPlaying: boolean
-  progress: number // 0-1
-  volume: number  // 0-1
-  shuffle: boolean
-  repeat: 'off' | 'one' | 'all'
+  progress: number
+  volume: number
   isMuted: boolean
+  shuffle: boolean
+  repeat: 'off' | 'all' | 'one'
 
+  // Actions
   play: (track: Track, queue?: Track[]) => void
   pause: () => void
   resume: () => void
-  togglePlay: () => void
   next: () => void
   prev: () => void
+  togglePlay: () => void
+  setVolume: (v: number) => void
+  setMuted: (v: boolean) => void
+  toggleMute: () => void
   seek: (progress: number) => void
-  setVolume: (volume: number) => void
+  setProgress: (progress: number) => void
   toggleShuffle: () => void
   toggleRepeat: () => void
-  toggleMute: () => void
+  setQueue: (queue: Track[]) => void
 }
 
-export const DEMO_TRACKS: Track[] = []
+// Helper to normalize track data from different API types
+export const normalizeTrack = (raw: any): Track => {
+  const id = raw.id || raw.trackId
+  return {
+    ...raw,
+    id,
+    artistName: raw.artistName || (typeof raw.artist === 'object' ? raw.artist?.name : raw.artist) || 'Unknown Artist',
+    albumTitle: raw.albumTitle || raw.album?.title || 'Unknown Album',
+    duration: raw.duration || raw.duration_ms / 1000 || 0,
+    audioUrl: raw.audioUrl || `/api/music/${id}/stream`,
+    cover: raw.cover || raw.coverUrl || raw.album?.coverArt || `https://api.dicebear.com/7.x/shapes/svg?seed=${id}`
+  }
+}
 
-const audioEl = new Audio()
-audioEl.crossOrigin = 'anonymous'
+export const formatTime = (seconds: number) => {
+  if (isNaN(seconds) || seconds < 0) return '0:00'
+  const mins = Math.floor(seconds / 60)
+  const secs = Math.floor(seconds % 60)
+  return `${mins}:${secs.toString().padStart(2, '0')}`
+}
 
-// Lazy import to avoid circular deps — syncStore uses playerStore state but not the store itself
-function syncPublish(type: string, payload: Record<string, unknown>) {
-  try {
-    // Dynamic import at runtime avoids circular dependency at module load time
-    import('./syncStore').then(({ useSyncStore }) => {
-      useSyncStore.getState().publish({ type: type as any, payload })
-    })
-  } catch { /* sync not available */ }
+export const getArtistName = (track: Track | null) => {
+  return track?.artistName || 'Unknown Artist'
+}
+
+export const getCoverUrl = (track: Track | null) => {
+  return track?.cover || `https://api.dicebear.com/7.x/shapes/svg?seed=${track?.id}`
 }
 
 export const usePlayerStore = create<PlayerState>((set, get) => ({
@@ -58,103 +69,145 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   isPlaying: false,
   progress: 0,
   volume: 0.8,
+  isMuted: false,
   shuffle: false,
   repeat: 'off',
-  isMuted: false,
 
-  play: (track, queue) => {
-    if (track.audioUrl) {
-      audioEl.src = track.audioUrl
-      audioEl.play().catch(console.error)
-    }
-    set({ track, queue: queue ?? get().queue, isPlaying: true, progress: 0 })
-    syncPublish('TRACK_CHANGE', {
-      trackId: track.id,
-      trackTitle: track.title,
-      trackArtist: typeof track.artist === 'string' ? track.artist : track.artist?.name,
-      trackCover: track.cover,
-      progress: 0,
+  play: (rawTrack, rawQueue) => {
+    const track = normalizeTrack(rawTrack)
+    const queue = rawQueue ? rawQueue.map(normalizeTrack) : get().queue
+
+    set({ track, queue, isPlaying: true, progress: 0 })
+    
+    // Publish to Sync
+    import('./syncStore').then(({ useSyncStore }) => {
+      useSyncStore.getState().publish({
+        type: 'TRACK_CHANGE',
+        payload: {
+          trackId: track.id,
+          trackTitle: track.title,
+          trackArtist: track.artistName,
+          trackCover: track.cover,
+          duration: track.duration,
+          progress: 0
+        }
+      })
     })
   },
 
   pause: () => {
-    audioEl.pause()
     set({ isPlaying: false })
-    syncPublish('PAUSE', { progress: get().progress })
-  },
-
-  resume: () => {
-    audioEl.play().catch(console.error)
-    set({ isPlaying: true })
-    const t = get().track
-    if (t) syncPublish('PLAY', {
-      trackId: t.id,
-      trackTitle: t.title,
-      trackArtist: typeof t.artist === 'string' ? t.artist : t.artist?.name,
-      trackCover: t.cover,
-      progress: get().progress,
+    import('./syncStore').then(({ useSyncStore }) => {
+      useSyncStore.getState().publish({ type: 'PAUSE', payload: {} })
     })
   },
 
-  togglePlay: () => {
-    const { isPlaying, track, queue } = get()
-    if (!track && queue.length > 0) {
-      get().play(queue[0], queue)
-    } else {
-      if (isPlaying) get().pause()
-      else get().resume()
+  resume: () => {
+    set({ isPlaying: true })
+    const track = get().track
+    if (track) {
+      import('./syncStore').then(({ useSyncStore }) => {
+        useSyncStore.getState().publish({
+          type: 'PLAY',
+          payload: {
+            trackId: track.id,
+            trackTitle: track.title,
+            trackArtist: track.artistName,
+            trackCover: track.cover,
+            duration: track.duration,
+            progress: get().progress
+          }
+        })
+      })
     }
+  },
+
+  togglePlay: () => {
+    if (get().isPlaying) get().pause()
+    else if (get().track) get().resume()
   },
 
   next: () => {
-    const { queue, track, shuffle } = get()
+    const { track, queue, shuffle, repeat } = get()
     if (!track || queue.length === 0) return
-    const idx = queue.findIndex(t => t.id === track.id)
-    const next = shuffle
-      ? queue[Math.floor(Math.random() * queue.length)]
-      : queue[(idx + 1) % queue.length]
-    get().play(next, queue)
+
+    if (repeat === 'one') {
+      get().play(track)
+      return
+    }
+
+    const currentIndex = queue.findIndex(t => t.id === track.id)
+    let nextIndex = currentIndex + 1
+
+    if (shuffle) {
+      nextIndex = Math.floor(Math.random() * queue.length)
+    } else if (nextIndex >= queue.length) {
+      if (repeat === 'all') nextIndex = 0
+      else {
+        set({ isPlaying: false, progress: 0 })
+        return
+      }
+    }
+
+    get().play(queue[nextIndex])
   },
 
   prev: () => {
-    const { queue, track } = get()
+    const { track, queue, progress } = get()
     if (!track || queue.length === 0) return
-    const idx = queue.findIndex(t => t.id === track.id)
-    const prev = queue[(idx - 1 + queue.length) % queue.length]
-    get().play(prev, queue)
-  },
 
-  seek: (progress) => {
-    if (audioEl.duration) {
-      audioEl.currentTime = progress * audioEl.duration
+    if (progress > 0.05) {
+      get().play(track)
+      return
     }
-    set({ progress })
-    syncPublish('SEEK', { progress })
+
+    const currentIndex = queue.findIndex(t => t.id === track.id)
+    let prevIndex = currentIndex - 1
+    if (prevIndex < 0) prevIndex = queue.length - 1
+
+    get().play(queue[prevIndex])
   },
 
   setVolume: (volume) => {
-    audioEl.volume = volume
     set({ volume, isMuted: volume === 0 })
-    syncPublish('VOLUME', { volume })
   },
 
-  toggleShuffle: () => set(s => ({ shuffle: !s.shuffle })),
-  toggleRepeat:  () => set(s => ({ repeat: s.repeat === 'off' ? 'all' : s.repeat === 'all' ? 'one' : 'off' })),
-  toggleMute:    () => set(s => ({ isMuted: !s.isMuted })),
-}))
+  setMuted: (isMuted) => {
+    set({ isMuted })
+  },
 
-export function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60)
-  const s = Math.floor(seconds % 60)
-  return `${m}:${s.toString().padStart(2, '0')}`
-}
+  toggleMute: () => {
+    set(state => ({ isMuted: !state.isMuted }))
+  },
 
-audioEl.addEventListener('timeupdate', () => {
-  if (audioEl.duration) {
-    usePlayerStore.setState({ progress: audioEl.currentTime / audioEl.duration })
+  seek: (progress) => {
+    set({ progress })
+    import('./syncStore').then(({ useSyncStore }) => {
+      useSyncStore.getState().publish({
+        type: 'SEEK',
+        payload: { progress }
+      })
+    })
+  },
+
+  setProgress: (progress) => {
+    set({ progress })
+  },
+
+  toggleShuffle: () => {
+    set(state => ({ shuffle: !state.shuffle }))
+  },
+
+  toggleRepeat: () => {
+    set(state => {
+      const modes: ('off' | 'all' | 'one')[] = ['off', 'all', 'one']
+      const currentIdx = modes.indexOf(state.repeat)
+      const nextIdx = (currentIdx + 1) % modes.length
+      return { repeat: modes[nextIdx] }
+    })
+  },
+
+  setQueue: (queue) => {
+    set({ queue: queue.map(normalizeTrack) })
   }
-})
-
-audioEl.addEventListener('ended', () => {
-  usePlayerStore.getState().next()
-})
+}))

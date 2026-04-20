@@ -9,6 +9,7 @@ import { useSyncStore } from '@/store/syncStore'
 import { useThemeStore } from '@/store/themeStore'
 import { userApi } from '@/lib/api'
 import { colors, spacing, radii, typography, gradients, layout } from '@/theme/tokens'
+import { BillingTier } from '@shared/types/user'
 
 const SETTINGS_SECTIONS = ['Account', 'Devices & Sync', 'Playback', 'Appearance']
 
@@ -27,7 +28,8 @@ export default function ProfileScreen() {
     try {
       const res = await userApi.updateProfile({ displayName })
       updateUser({
-        name: res.user?.profile?.displayName || displayName,
+        displayName: res.user?.displayName || displayName,
+        name: res.user?.name || res.user?.displayName || displayName,
       })
       Alert.alert('Success', 'Profile saved successfully!')
     } catch (err: any) {
@@ -109,9 +111,9 @@ export default function ProfileScreen() {
               <View style={styles.card}>
                 <View style={styles.rowBetween}>
                   <Text style={styles.cardTitle}>Subscription</Text>
-                  <View style={[styles.badge, user?.plan === 'patron' ? { backgroundColor: `${accentColor}22`, borderColor: `${accentColor}44` } : {}]}>
-                    <Text style={[styles.badgeText, user?.plan === 'patron' ? { color: accentColor } : { color: colors.textMuted }]}>
-                      {user?.plan === 'patron' ? 'PREMIUM' : 'FREE'}
+                  <View style={[styles.badge, user?.plan === BillingTier.PATRON ? { backgroundColor: `${accentColor}22`, borderColor: `${accentColor}44` } : {}]}>
+                    <Text style={[styles.badgeText, user?.plan === BillingTier.PATRON ? { color: accentColor } : { color: colors.textMuted }]}>
+                      {user?.plan === BillingTier.PATRON ? 'PREMIUM' : 'FREE'}
                     </Text>
                   </View>
                 </View>
@@ -123,7 +125,7 @@ export default function ProfileScreen() {
                   </View>
                 ))}
 
-                {user?.plan !== 'patron' && (
+                {user?.plan !== BillingTier.PATRON && (
                   <TouchableOpacity style={styles.upgradeBtn}>
                     <LinearGradient colors={gradients.primary} style={styles.upgradeGrad} start={{x:0,y:0}} end={{x:1,y:0}}>
                       <Text style={{ color: '#fff', fontWeight: '700' }}>✨ Upgrade to Premium</Text>
@@ -131,6 +133,15 @@ export default function ProfileScreen() {
                   </TouchableOpacity>
                 )}
               </View>
+              
+              {user?.role === 'ADMIN' && (
+                <TouchableOpacity 
+                  style={[styles.btnPrimary, { backgroundColor: '#A855F7', marginBottom: spacing[2], marginTop: 0 }]} 
+                  onPress={() => router.push('/admin/ingest')}
+                >
+                  <Text style={styles.btnPrimaryText}>🛡️ Admin Control Center</Text>
+                </TouchableOpacity>
+              )}
               
               <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
                 <Text style={styles.logoutText}>Log Out</Text>

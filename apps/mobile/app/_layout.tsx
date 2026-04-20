@@ -2,6 +2,7 @@ import { Drawer } from 'expo-router/drawer'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { useAuthStore } from '../src/store/authStore'
 import { colors } from '../src/theme/tokens'
+import '../src/services/playbackService' // Initialize playback logic
 
 export default function RootLayout() {
   const { user } = useAuthStore()

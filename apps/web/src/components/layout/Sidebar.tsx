@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { useUIStore } from '../../store/uiStore'
 import { useModalStore } from '../../store/modalStore'
-import { adminApi, playlistApi } from '../../lib/api'
+import { playlistApi } from '../../lib/api'
 import './Sidebar.css'
 
 const NAV_ITEMS = [

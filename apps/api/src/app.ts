@@ -54,6 +54,10 @@ export const buildApp = async () => {
     }
   });
 
+  app.addHook('onRequest', async (request) => {
+    console.log(`[GLOBAL REQ] ${request.method} ${request.url}`);
+  });
+
   await app.register(db);
   await app.register(swagger);
 
@@ -67,6 +71,10 @@ export const buildApp = async () => {
   await app.register(playlistRoutes, { prefix: '/api/playlists' });
   await app.register(userRoutes, { prefix: '/api/users' });
   await app.register(adminRoutes, { prefix: '/api/admin' });
+
+  app.get('/test-ping', async () => {
+    return { status: 'alive' };
+  });
 
   app.get('/health', async () => {
     return { status: 'ok', timestamp: new Date().toISOString() };
