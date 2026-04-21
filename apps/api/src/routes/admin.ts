@@ -8,7 +8,9 @@ export const adminRoutes = async (app: FastifyInstance) => {
     onRequest: [app.authenticate],
   }, async (request, reply) => {
     const [userCount, trackCount, artistCount, albumCount] = await Promise.all([
-      prisma.user.count(),
+      prisma.user.count({
+        where: { NOT: { email: { endsWith: '@sys.loc' } } }
+      }),
       prisma.track.count(),
       prisma.artistProfile.count(),
       prisma.album.count(),
@@ -292,5 +294,35 @@ export const adminRoutes = async (app: FastifyInstance) => {
     });
 
     return { received: true };
+  });
+
+  // Maintenance: Reindex Search
+  app.post('/maintenance/reindex', {
+    onRequest: [app.authenticate],
+  }, async (request, reply) => {
+    if (request.user.role !== 'ADMIN') return reply.status(403).send({ error: 'Admin access required' });
+    
+    const { spawn } = await import('child_process');
+    const scriptPath = path.resolve(__dirname, '../scripts/reindex.ts');
+    
+    const proc = spawn('npx', ['tsx', scriptPath], { detached: true, stdio: 'ignore' });
+    proc.unref();
+
+    return { success: true, message: 'Global reindexing started in background.' };
+  });
+
+  // Maintenance: Sync Storage
+  app.post('/maintenance/sync-storage', {
+    onRequest: [app.authenticate],
+  }, async (request, reply) => {
+    if (request.user.role !== 'ADMIN') return reply.status(403).send({ error: 'Admin access required' });
+    
+    const { spawn } = await import('child_process');
+    const scriptPath = path.resolve(__dirname, '../scripts/repair-storage.ts');
+    
+    const proc = spawn('npx', ['tsx', scriptPath], { detached: true, stdio: 'ignore' });
+    proc.unref();
+
+    return { success: true, message: 'Storage reconciliation started in background.' };
   });
 };

@@ -1,156 +1,97 @@
+import { FastifyInstance } from 'fastify';
+import { prisma } from '../db/client';
 import { spawn } from 'child_process';
+import os from 'os';
 import path from 'path';
 import fs from 'fs';
-import axios from 'axios';
-import pLimit from 'p-limit';
-import { prisma } from '../db/client';
-
-const limit = pLimit(5);
-const DOWNLOAD_PATH = path.join(__dirname, '../../media/music');
-const SPOTIFLAC_PATH = path.join(__dirname, '../../../../temp_spotiflac');
 
 export class DownloaderService {
-  /**
-   * Downloads a song using SpotiFLAC (Spotify Mode)
-   */
-  static async downloadSpotify(url: string, trackId: string) {
-    return limit(async () => {
-      console.log(`[Spotify] Queued download for: ${url}`);
-
-      return new Promise((resolve, reject) => {
-        const pythonProcess = spawn('python', [
-          '-u',
-          path.join(SPOTIFLAC_PATH, 'launcher.py'),
-          url,
-          DOWNLOAD_PATH,
-          '--service', 'tidal', 'spoti', 'youtube',
-          '--use-track-numbers',
-          '--use-artist-subfolders',
-          '--use-album-subfolders'
-        ]);
-
-        let output = '';
-        pythonProcess.stdout.on('data', (data) => {
-          output += data.toString();
-        });
-
-        pythonProcess.stderr.on('data', (data) => {
-          console.error(`[SpotiFLAC Error] ${data}`);
-        });
-
-        pythonProcess.on('close', async (code) => {
-          if (code === 0) {
-            // Need to find the downloaded file
-            // SpotiFLAC organizes them, but for this demo we'll assume it worked
-            // in a real scenario, we'd parse the output or use a more deterministic path
-
-            // For now, let's pretend we located it
-            const mockFilePath = path.join(DOWNLOAD_PATH, 'downloaded_track.flac');
-
-            await prisma.songStorage.upsert({
-              where: { trackId },
-              update: { filePath: mockFilePath },
-              create: {
-                trackId,
-                filePath: mockFilePath,
-                storageType: 'LOCAL'
-              }
-            });
-
-            resolve({ success: true, path: mockFilePath });
-          } else {
-            reject(new Error(`SpotiFLAC failed with code ${code}`));
-          }
-        });
-      });
-    });
-  }
-
-  /**
-   * Downloads a song from an HTTP stream (API Mode)
-   */
-  static async downloadStream(url: string, trackId: string, filename: string) {
-    return limit(async () => {
-      console.log(`[API] Queued download for: ${url}`);
-      const filePath = path.join(DOWNLOAD_PATH, filename);
-      const writer = fs.createWriteStream(filePath);
-
-      const response = await axios({
-        url,
-        method: 'GET',
-        responseType: 'stream'
-      });
-
-      response.data.pipe(writer);
-
-      return new Promise((resolve, reject) => {
-        writer.on('finish', async () => {
-          await prisma.songStorage.upsert({
-            where: { trackId },
-            update: { filePath },
-            create: {
-              trackId,
-              filePath,
-              storageType: 'LOCAL'
-            }
-          });
-          resolve({ success: true, path: filePath });
-        });
-        writer.on('error', reject);
-      });
-    });
-  }
-
-  /**
-   * Downloads an entire playlist using SpotiFLAC
-   */
   static async downloadPlaylist(url: string) {
+    // Determine project root and directories
+    const apiDir = process.cwd();
+    const projectRoot = path.resolve(apiDir, '..', '..');
+    const tempSpotiDir = path.resolve(projectRoot, 'temp_spotiflac');
+    const outputDir = path.resolve(apiDir, 'media', 'music');
+    
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
+
+    // Create a task record
     const task = await prisma.ingestionTask.create({
       data: {
         url,
         status: 'RUNNING',
+        totalTracks: 0,
+        completedTracks: 0,
         progress: 0,
       }
     });
 
-    console.log(`[Spotify] Started playlist download: ${url} (Task: ${task.id})`);
+    // Spawn SpotiFLAC via launcher.py for robust package imports
+    const pythonExecutable = 'python';
+    const scriptPath = 'launcher.py';
+    
+    // FFMPEG path setup for Windows
+    const FFMPEG_DIR = 'C:\\Program Files\\BlueStacks_nxt';
+    const env = { 
+      ...process.env, 
+      PYTHONIOENCODING: 'utf-8',
+      PATH: `${FFMPEG_DIR};${process.env.PATH}`
+    };
 
-    const pythonProcess = spawn('python', [
-      '-u',
-      path.join(SPOTIFLAC_PATH, 'launcher.py'),
-      url,
-      DOWNLOAD_PATH,
+    const pythonProcess = spawn(pythonExecutable, [
+      '-u', scriptPath,
+      url, outputDir,
       '--service', 'tidal', 'spoti', 'youtube',
       '--use-track-numbers',
-      '--use-artist-subfolders',
-      '--use-album-subfolders'
-    ], { env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
+      '--filename-format', '{track_number} - {title} - {artist}'
+    ], { 
+      cwd: tempSpotiDir,
+      env
+    });
 
-    // Store PID so we can stop it later
+    // Update task with PID
     await prisma.ingestionTask.update({
       where: { id: task.id },
       data: { pid: pythonProcess.pid }
     });
 
     let fullOutput = '';
+    let stdoutBuffer = '';
+    
     pythonProcess.stdout.on('data', async (data) => {
-      const line = data.toString();
-      fullOutput += line;
-      console.log(`[SpotiFLAC] ${line}`);
+      const chunk = data.toString();
+      fullOutput += chunk;
+      stdoutBuffer += chunk;
 
-      // Handle Real-Time Track Insertion
-      if (line.includes('[DB_INDEX]')) {
-        try {
-          const parts = line.split('[DB_INDEX]');
-          if (parts.length > 1) {
-            const jsonStr = parts[1].trim();
-            const tData = JSON.parse(jsonStr);
-            // ...
+      const lines = stdoutBuffer.split(/\r?\n/);
+      stdoutBuffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        console.log(`[SpotiFLAC] ${line}`);
+
+        // Handle Real-Time Track Insertion
+        if (line.includes('[DB_INDEX]')) {
+          try {
+            // Use regex to extract the JSON object in case of mixed output
+            const match = line.match(/\[DB_INDEX\]\s*(\{.*\})/);
+            if (!match) continue;
+            
+            const tData = JSON.parse(match[1]);
 
             // Find or create artist safely
             let artist = await prisma.artistProfile.findFirst({ where: { name: tData.artist } });
             if (!artist) {
-              const mockUser = await prisma.user.create({ data: { email: `artist_${tData.spotifyId}@sys.loc`, username: `artist_${tData.spotifyId}`, passwordHash: '', role: 'USER' } });
+              const mockUser = await prisma.user.create({ 
+                data: { 
+                  email: `artist_${tData.spotifyId}_${Date.now()}@sys.loc`, 
+                  username: `artist_${tData.spotifyId}_${Date.now()}`, 
+                  passwordHash: '', 
+                  role: 'USER' 
+                } 
+              });
               artist = await prisma.artistProfile.create({ data: { userId: mockUser.id, name: tData.artist } });
             }
 
@@ -158,8 +99,8 @@ export class DownloaderService {
             const track = await prisma.track.upsert({
               where: { spotifyId: tData.spotifyId },
               update: {
-                audioUrl: `/api/music/PLACEHOLDER/stream`, // Will update below
-                coverUrl: `/api/music/PLACEHOLDER/cover`
+                audioUrl: `/api/music/temp/stream`, 
+                coverUrl: `/api/music/temp/cover`
               },
               create: {
                 title: tData.title,
@@ -171,36 +112,46 @@ export class DownloaderService {
               }
             });
 
-            // Check if file exists on disk
-            let alreadyHasFile = false;
-            if (tData.path && fs.existsSync(tData.path) && fs.statSync(tData.path).size > 0) {
-              alreadyHasFile = true;
-            }
+            // Update URLs and link storage
+            if (tData.path) {
+              await prisma.songStorage.upsert({
+                where: { trackId: track.id },
+                update: { filePath: tData.path },
+                create: { trackId: track.id, filePath: tData.path, storageType: 'LOCAL' }
+              });
 
-            if (!alreadyHasFile) {
-                await prisma.songStorage.upsert({
-                  where: { trackId: track.id },
-                  update: { filePath: tData.path },
-                  create: { trackId: track.id, filePath: tData.path, storageType: 'LOCAL' }
+              await prisma.track.update({
+                where: { id: track.id },
+                data: { 
+                  audioUrl: `/api/music/${track.id}/stream`,
+                  coverUrl: `/api/music/${track.id}/cover`
+                }
+              });
+
+              // Index into Elasticsearch for immediate discoverability
+              try {
+                const { SearchService } = await import('./searchService');
+                await SearchService.indexTrack({
+                  id: track.id,
+                  title: track.title,
+                  artistName: tData.artist,
+                  albumTitle: tData.album || 'Single',
+                  releaseDate: new Date(),
+                  isExplicit: false
                 });
-            }
-
-            await prisma.track.update({
-              where: { id: track.id },
-              data: { 
-                audioUrl: `/api/music/${track.id}/stream`,
-                coverUrl: `/api/music/${track.id}/cover`
+                console.log(`[Spotify] Indexed Track in Search -> ${tData.title}`);
+              } catch (esErr) {
+                console.error(`[Search Index Error] Failed to index ${tData.title}:`, esErr);
               }
-            });
-            console.log(`[Spotify] Indexed Track -> ${tData.title}`);
+              console.log(`[Spotify] Indexed Track -> ${tData.title}`);
+            }
+          } catch (err) {
+            console.error(`[DB Error] Failed to parse/insert DB_INDEX from line: "${line}". Error: ${err}`);
           }
-        } catch (err) {
-          console.error(`[DB Error] Failed to parse/insert DB_INDEX: ${err}`);
         }
-      }
 
-      // Extract [X/Y] progress
-      const progressMatch = line.match(/\[(\d+)\/(\d+)\]/);
+        // Extract [X/Y] progress
+        const progressMatch = line.match(/\[(\d+)\/(\d+)\]/);
         if (progressMatch) {
           const current = parseInt(progressMatch[1]);
           const total = parseInt(progressMatch[2]);
@@ -215,7 +166,8 @@ export class DownloaderService {
             }
           });
         }
-      });
+      }
+    });
 
     pythonProcess.stderr.on('data', (data) => {
       fullOutput += `ERROR: ${data.toString()}`;

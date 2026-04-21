@@ -59,14 +59,17 @@ interface PlayerState {
 
 export const normalizeTrack = (raw: any): Track => {
   const id = raw.id || raw.trackId
+  // Ensure we have a valid duration, fallback to 0 if totally missing
+  const duration = raw.duration || (raw.duration_ms ? raw.duration_ms / 1000 : 0) || 0;
+  
   return {
     ...raw,
     id,
     artistName: raw.artistName || (typeof raw.artist === 'object' ? raw.artist?.name : raw.artist) || 'Unknown Artist',
     albumTitle: raw.albumTitle || raw.album?.title || 'Unknown Album',
-    duration: raw.duration || raw.duration_ms / 1000 || 0,
+    duration,
     audioUrl: raw.audioUrl || `/api/music/${id}/stream`,
-    cover: raw.cover || raw.coverUrl || raw.album?.coverArt || `https://api.dicebear.com/7.x/shapes/svg?seed=${id}`
+    cover: raw.cover || raw.coverUrl || (raw.album?.coverArt) || `/api/music/${id}/cover`
   }
 }
 
@@ -78,7 +81,10 @@ export const formatTime = (seconds: number) => {
 }
 
 export const getArtistName = (track: Track | null) => track?.artistName || 'Unknown Artist'
-export const getCoverUrl = (track: Track | null) => track?.cover || `https://api.dicebear.com/7.x/shapes/svg?seed=${track?.id}`
+export const getCoverUrl = (track: Track | null) => {
+  if (!track) return ''
+  return track.cover || `/api/music/${track.id}/cover`
+}
 
 /**
  * Fisher-Yates Shuffle

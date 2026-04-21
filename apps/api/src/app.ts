@@ -40,7 +40,7 @@ export const buildApp = async () => {
   });
 
   await app.register(rateLimit, {
-    max: 100,
+    max: 10000,
     timeWindow: '1 minute',
   });
 
@@ -48,6 +48,7 @@ export const buildApp = async () => {
   await app.register(cors, { 
     origin: corsOrigin,
     credentials: true,
+    exposedHeaders: ['Content-Range', 'Accept-Ranges', 'Content-Length'],
   });
   
   await app.register(jwt, {

@@ -41,66 +41,44 @@ export const musicRoutes = async (app: FastifyInstance) => {
     const { id } = idParamSchema.parse(request.params);
     
     try {
-      const storage = await prisma.songStorage.findUnique({ where: { trackId: id } });
-      if (!storage) return reply.status(404).send({ error: 'Track storage not found' });
+      const storage = await MusicService.getStorageCached(id);
+      if (!storage) {
+        request.log.error(`[Stream FAILED] Track ID ${id} not found in SongStorage DB`);
+        return reply.status(404).send({ error: 'Track storage not found' });
+      }
 
-      let filePath = storage.filePath;
+      let filePath = path.normalize(storage.filePath);
       if (!fs.existsSync(filePath)) {
+        request.log.warn(`[Stream 404] File missing on disk at: ${path.resolve(filePath)}`);
+        
         // Fallback probe for extensions if path is stale
+        const baseWithoutExt = filePath.replace(/\.[^/.]+$/, "");
         const exts = ['.mp3', '.flac', '.m4a', '.mp4'];
         let found = false;
         for (const ext of exts) {
-          if (fs.existsSync(filePath + ext)) {
-            filePath += ext;
+          const probedPath = baseWithoutExt + ext;
+          if (fs.existsSync(probedPath)) {
+            filePath = probedPath;
             found = true;
-            // Update DB for future requests
-            await prisma.songStorage.update({ where: { id: storage.id }, data: { filePath } });
+            request.log.info(`[Stream HEALED] Found file with extension: ${path.basename(probedPath)}`);
+            // Update DB for future requests (Service should probably have a method for this)
+            await prisma.songStorage.update({ where: { id: storage.id }, data: { filePath: probedPath } });
             break;
           }
         }
-        if (!found) return reply.status(404).send({ error: 'Audio file missing on disk' });
+        if (!found) {
+          request.log.error(`[Stream FAILED] Audio file definitively missing at: ${filePath}`);
+          return reply.status(404).send({ error: 'Audio file missing on disk' });
+        }
       }
 
-      const stat = fs.statSync(filePath);
-      const fileSize = stat.size;
-      const range = request.headers.range;
-
-      // Determine MIME type based on extension
-      const ext = path.extname(filePath).toLowerCase();
-      let mimeType = 'audio/mpeg';
-      if (ext === '.flac') mimeType = 'audio/flac';
-      if (ext === '.m4a') mimeType = 'audio/mp4';
-      if (ext === '.ogg') mimeType = 'audio/ogg';
-      if (ext === '.wav') mimeType = 'audio/wav';
-
-      if (range) {
-        const parts = range.replace(/bytes=/, "").split("-");
-        const start = parseInt(parts[0], 10);
-        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-        const chunksize = (end - start) + 1;
-        const file = fs.createReadStream(filePath, { start, end });
-        
-        reply
-          .status(206)
-          .headers({
-            'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-            'Accept-Ranges': 'bytes',
-            'Content-Length': chunksize,
-            'Content-Type': mimeType,
-            'Cache-Control': 'public, max-age=3600',
-          })
-          .send(file);
-      } else {
-        reply
-          .status(200)
-          .headers({
-            'Content-Length': fileSize,
-            'Content-Type': mimeType,
-            'Accept-Ranges': 'bytes',
-            'Cache-Control': 'public, max-age=3600',
-          })
-          .send(fs.createReadStream(filePath));
-      }
+      // Calculate path relative to 'media' directory for fastify-static
+      // Root is registered as apps/api/media
+      const mediaRoot = path.resolve(__dirname, '../../media');
+      const relativePath = path.relative(mediaRoot, filePath);
+      
+      request.log.info(`[STREAM] Serving relative: ${relativePath}`);
+      return reply.sendFile(relativePath);
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ error: 'Internal server error during streaming' });

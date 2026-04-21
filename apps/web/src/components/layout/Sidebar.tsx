@@ -39,16 +39,28 @@ export default function Sidebar() {
 
 
   return (
-    <aside className={`sidebar glass-low ${sidebarCollapsed ? 'collapsed' : ''}`}>
+    <aside className={`sidebar glass-heavy ${sidebarCollapsed ? 'collapsed' : ''}`} style={{ 
+      transition: 'var(--transition-slow)',
+      boxShadow: 'var(--shadow-lunar-lift)',
+      borderRight: 'var(--border-glass)'
+    }}>
       {/* Logo & Toggle */}
-      <div className="sidebar-header">
+      <div className="sidebar-header" style={{ padding: '24px 20px' }}>
         {!sidebarCollapsed && (
-          <div className="sidebar-logo">
-            <span className="sidebar-logo-icon">♪</span>
-            <span className="sidebar-logo-text gradient-text">Local Music</span>
+          <div className="sidebar-logo" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div className="sidebar-logo-icon" style={{ 
+              width: 32, height: 32, borderRadius: 'var(--radius-sm)', 
+              background: 'var(--grad-primary)', display: 'flex', 
+              alignItems: 'center', justifyContent: 'center', color: '#fff',
+              fontSize: '1.25rem', fontWeight: 800
+            }}>♪</div>
+            <span className="sidebar-logo-text" style={{ 
+              fontSize: '1.25rem', fontWeight: 800, letterSpacing: '-0.02em',
+              background: 'var(--grad-text)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'
+            }}>Local Music</span>
           </div>
         )}
-        <button className="btn-icon toggle-btn" onClick={toggleSidebar} title={sidebarCollapsed ? 'Expand' : 'Collapse'}>
+        <button className="btn-icon toggle-btn" onClick={toggleSidebar} title={sidebarCollapsed ? 'Expand' : 'Collapse'} style={{ opacity: 0.6 }}>
           {sidebarCollapsed ? '»' : '«'}
         </button>
       </div>

@@ -49,6 +49,9 @@ export const musicApi = {
   search: (q: string) =>
     request<{ results: any[] }>(`/search/tracks?q=${encodeURIComponent(q)}`),
 
+  suggestions: (q: string) =>
+    request<{ results: any[] }>(`/search/suggestions?q=${encodeURIComponent(q)}`),
+
   trending: () =>
     request<{ tracks: any[] }>('/music/trending'),
 

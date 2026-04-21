@@ -29,9 +29,18 @@ function AudioEngine() {
     const onWaiting = () => setPlaybackState('buffering')
     const onPlaying = () => setPlaybackState('playing')
     const onEnded = () => next()
-    const onError = () => {
-      console.error('[AudioEngine] Playback error for:', track?.title)
+    const onError = (e: any) => {
+      const errorCode = audio.error?.code
+      const errorMessage = audio.error?.message || 'Unknown playback error'
+      console.error('[AudioEngine] Playback error:', { errorCode, errorMessage, track: track?.title })
+      
+      let friendlyError = 'Playback failed. Check your connection or file format.'
+      if (errorCode === 4) { // MEDIA_ERR_SRC_NOT_SUPPORTED
+        friendlyError = 'Format not supported or connection interrupted.'
+      }
+      
       setPlaybackState('error')
+      usePlayerStore.getState().reportError(friendlyError, 'DECODE_ERROR')
     }
 
     audio.addEventListener('timeupdate', onTimeUpdate)
@@ -161,10 +170,23 @@ export default function NowPlayingBar() {
               title="Shuffle"
             >⇄</button>
             <button className="btn-icon" onClick={prev} title="Previous">⏮</button>
-            <button className="btn-icon" style={{ background: 'var(--grad-primary)', color: '#fff', width: 40, height: 40, fontSize: '1rem', boxShadow: 'var(--shadow-glow-primary)' }} onClick={togglePlay} title={isPlaying ? 'Pause' : 'Play'}>
-              {isBuffering ? <div className="spinner-micro" /> : (isPlaying ? '⏸' : '▶')}
-            </button>
-            <button className="btn-icon" onClick={next} title="Next">⏭</button>
+            
+            {playbackState === 'error' ? (
+              <div className="playback-error-container">
+                <span className="playback-error-msg" title={usePlayerStore.getState().error || ''}>
+                  ⚠️ {usePlayerStore.getState().error?.includes('Route not found') ? 'Stream Route Missing' : (usePlayerStore.getState().error || 'File Missing')}
+                </span>
+                <button className="btn-retry" onClick={() => navigate(0)}>↻</button>
+                <button className="btn-icon" onClick={next} title="Skip Missing Track">⏭</button>
+              </div>
+            ) : (
+              <>
+                <button className="btn-icon" style={{ background: 'var(--grad-primary)', color: '#fff', width: 40, height: 40, fontSize: '1rem', boxShadow: 'var(--shadow-glow-primary)' }} onClick={togglePlay} title={isPlaying ? 'Pause' : 'Play'}>
+                  {isBuffering ? <div className="spinner-micro" /> : (isPlaying ? '⏸' : '▶')}
+                </button>
+                <button className="btn-icon" onClick={next} title="Next">⏭</button>
+              </>
+            )}
             <button
               className={`btn-icon${repeat !== 'off' ? ' active-ctrl' : ''}`}
               onClick={toggleRepeat}
@@ -197,7 +219,7 @@ export default function NowPlayingBar() {
           </div>
         </div>
 
-        {/* Right: Volume + Devices + Full screen */}
+        {/* Right: Volume + Devices + Full screen + Mobile Play */}
         <div className="now-playing-right">
           <div className="volume-control">
             <button className="btn-icon" onClick={toggleMute} title="Volume">
@@ -226,6 +248,21 @@ export default function NowPlayingBar() {
           >
             <span>📱</span>
             {deviceCount > 1 && <span className="device-count-badge">{deviceCount}</span>}
+          </button>
+
+          {/* Simple Mobile Play/Pause */}
+          <button 
+            className="btn-icon mobile-only-play" 
+            style={{ 
+              display: window.innerWidth < 769 ? 'flex' : 'none',
+              background: 'var(--grad-primary)', 
+              color: '#fff', 
+              width: 36, height: 36, 
+              boxShadow: 'var(--shadow-glow-primary)' 
+            }} 
+            onClick={(e) => { e.stopPropagation(); togglePlay(); }}
+          >
+            {isBuffering ? <div className="spinner-micro" /> : (isPlaying ? '⏸' : '▶')}
           </button>
 
           <button className="btn-icon" onClick={() => navigate('/now-playing')} title="Full screen">⛶</button>
