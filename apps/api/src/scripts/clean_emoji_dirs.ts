@@ -10,8 +10,8 @@ async function renameEmojiDirs() {
     const full = path.join(musicDir, item);
     if (fs.statSync(full).isDirectory()) {
         // If it has emojis or non-ASCII
-        if (/[^\u0000-\u007F]/.test(item)) {
-            const cleanName = item.replace(/[^\u0000-\u007F]/g, '').replace(/\s+/g, '_').trim() || 'cleaned_folder';
+        if (/[^\x20-\x7E]/.test(item)) {
+            const cleanName = item.replace(/[^\x20-\x7E]/g, '').replace(/\s+/g, '_').trim() || 'cleaned_folder';
             const newPath = path.join(musicDir, cleanName);
             
             console.log(`Renaming folder: ${item} -> ${cleanName}`);

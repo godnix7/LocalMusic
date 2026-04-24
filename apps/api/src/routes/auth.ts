@@ -56,7 +56,7 @@ export const authRoutes = async (app: FastifyInstance) => {
     return { user, token };
   });
 
-  app.post('/forgot-password', async (request, _reply) => {
+  app.post('/forgot-password', async (request) => {
     const { identifier } = z.object({ identifier: z.string() }).parse(request.body);
     
     // Attempt to lookup
@@ -67,7 +67,7 @@ export const authRoutes = async (app: FastifyInstance) => {
 
   app.get('/me', {
     onRequest: [app.authenticate]
-  }, async (request, _reply) => {
+  }, async (request) => {
     const user = await AuthService.validateUser(request.user.userId);
     return { user };
   });

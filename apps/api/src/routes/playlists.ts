@@ -6,7 +6,7 @@ export const playlistRoutes = async (app: FastifyInstance) => {
   // List user's playlists (for now, return a curated set from tracks)
   app.get('/', {
     onRequest: [app.authenticate],
-  }, async (request, reply) => {
+  }, async () => {
     // Build playlists from existing albums 
     const albums = await prisma.album.findMany({
       include: { artist: true, tracks: true },
