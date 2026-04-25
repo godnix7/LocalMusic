@@ -109,7 +109,7 @@ export const adminApi = {
     request<{ success: boolean }>('POST', '/admin/add-playlist', { url }),
 
   stopTask: (id: string) =>
-    request<{ success: boolean }>('POST', `/admin/stop-task`, { id }),
+    request<{ success: boolean }>('POST', `/admin/tasks/${id}/stop`, {}),
 }
 
 // ── Health ────────────────────────────────────────────────────────────────
