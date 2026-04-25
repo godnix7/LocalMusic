@@ -9,9 +9,11 @@
 import { User } from '@local-music/shared/src/types/user'
 import { Track, Album as AlbumType } from '@local-music/shared/src/types/track'
 
+// 192.168.220.98 is the LAN IP of your host machine found in recent server logs.
+// Update this if your network IP changes.
 export const BASE_URL = __DEV__
-  ? 'http://10.0.2.2:3001/api'   // Android emulator → host machine
-  : 'https://api.localmusic.app' // production (placeholder)
+  ? 'http://192.168.220.98:3001/api'  // Physical Device / Expo Go → host machine
+  : 'https://api.localmusic.app'      // production (placeholder)
 
 let _authToken: string | null = null
 

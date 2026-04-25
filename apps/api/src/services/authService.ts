@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../db/client';
-import { Role, BillingTier } from '@prisma/client';
+import { Role } from '@prisma/client';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-me';
 
@@ -41,6 +41,27 @@ export class AuthService {
       include: {
         profile: true,
       },
+    });
+  }
+
+  static async findUserByEmail(email: string) {
+    return prisma.user.findUnique({
+      where: { email },
+      include: { profile: true, artistProfile: true },
+    });
+  }
+
+  static async findUserByUsername(username: string) {
+    return prisma.user.findUnique({
+      where: { username },
+      include: { profile: true, artistProfile: true },
+    });
+  }
+
+  static async findUserById(id: string) {
+    return prisma.user.findUnique({
+      where: { id },
+      include: { profile: true, artistProfile: true },
     });
   }
 

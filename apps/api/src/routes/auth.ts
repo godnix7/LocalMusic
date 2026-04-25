@@ -18,12 +18,12 @@ export const authRoutes = async (app: FastifyInstance) => {
   app.post('/register', async (request, reply) => {
     const data = registerSchema.parse(request.body);
     
-    // Check if user already exists by email or username
-    const existingEmail = await AuthService.validateUser(data.email);
+    // Check if user already exists by email or username independently
+    const existingEmail = await AuthService.findUserByEmail(data.email);
     if (existingEmail) {
       return reply.status(400).send({ error: 'Email already registered' });
     }
-    const existingUsername = await AuthService.validateUser(data.username);
+    const existingUsername = await AuthService.findUserByUsername(data.username);
     if (existingUsername) {
       return reply.status(400).send({ error: 'Username already taken' });
     }
@@ -56,18 +56,18 @@ export const authRoutes = async (app: FastifyInstance) => {
     return { user, token };
   });
 
-  app.post('/forgot-password', async (request, reply) => {
+  app.post('/forgot-password', async (request) => {
     const { identifier } = z.object({ identifier: z.string() }).parse(request.body);
     
     // Attempt to lookup
-    const user = await AuthService.validateUser(identifier);
+    await AuthService.validateUser(identifier);
     // Deliberately return success whether found or not to prevent username enumeration attacks
     return { message: 'If an account exists, a reset link was sent.' };
   });
 
   app.get('/me', {
     onRequest: [app.authenticate]
-  }, async (request, reply) => {
+  }, async (request) => {
     const user = await AuthService.validateUser(request.user.userId);
     return { user };
   });
